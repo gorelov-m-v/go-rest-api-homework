@@ -1,13 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
+	"strings"
 )
 
-// Task ...
 type Task struct {
 	ID           string   `json:"id"`
 	Description  string   `json:"description"`
@@ -39,16 +38,104 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+func getAllTasks(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	tasksJSON, err := json.Marshal(tasks)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(tasksJSON)
+}
+
+func createTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var newTask Task
+	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if newTask.ID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	tasks[newTask.ID] = newTask
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func handleTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	id := path
+
+	switch r.Method {
+	case http.MethodGet:
+		getTaskByID(w, r, id)
+	case http.MethodDelete:
+		deleteTaskByID(w, r, id)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func getTaskByID(w http.ResponseWriter, _ *http.Request, id string) {
+	task, exists := tasks[id]
+	if !exists {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	taskJSON, err := json.Marshal(task)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(taskJSON)
+}
+
+func deleteTaskByID(w http.ResponseWriter, _ *http.Request, id string) {
+	_, exists := tasks[id]
+	if !exists {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	delete(tasks, id)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleTasks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodGet:
+		getAllTasks(w, r)
+	case http.MethodPost:
+		createTask(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
 
 func main() {
-	r := chi.NewRouter()
+	mux := http.NewServeMux()
 
-	// здесь регистрируйте ваши обработчики
-	// ...
+	mux.HandleFunc("/tasks", handleTasks)
+	mux.HandleFunc("/tasks/", handleTaskByID)
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	fmt.Println("Сервер запущен на порту :8080")
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
 		return
 	}
