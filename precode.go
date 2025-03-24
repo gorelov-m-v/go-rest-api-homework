@@ -1,13 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
+	"strings"
 )
 
-// Task ...
 type Task struct {
 	ID           string   `json:"id"`
 	Description  string   `json:"description"`
@@ -39,16 +38,89 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+func getAllTasks(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	tasksJSON, err := json.Marshal(tasks)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(tasksJSON)
+}
+
+func createTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var newTask Task
+	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if newTask.ID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if _, exists := tasks[newTask.ID]; exists {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+
+	tasks[newTask.ID] = newTask
+	w.WriteHeader(http.StatusCreated)
+}
+
+func getTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	id := path
+
+	task, exists := tasks[id]
+	if !exists {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	taskJSON, err := json.Marshal(task)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(taskJSON)
+}
+
+func deleteTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	id := path
+
+	if _, exists := tasks[id]; !exists {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	delete(tasks, id)
+	w.WriteHeader(http.StatusOK)
+}
 
 func main() {
-	r := chi.NewRouter()
+	mux := http.NewServeMux()
 
-	// здесь регистрируйте ваши обработчики
-	// ...
+	mux.HandleFunc("GET /tasks", getAllTasks)
+	mux.HandleFunc("POST /tasks", createTask)
+	mux.HandleFunc("GET /tasks/{id}", getTaskByID)
+	mux.HandleFunc("DELETE /tasks/{id}", deleteTaskByID)
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	fmt.Println("Сервер запущен на порту :8080")
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
 		return
 	}
