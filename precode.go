@@ -65,37 +65,30 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks[newTask.ID] = newTask
+	if _, exists := tasks[newTask.ID]; exists {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 
+	tasks[newTask.ID] = newTask
 	w.WriteHeader(http.StatusCreated)
 }
 
-func handleTaskByID(w http.ResponseWriter, r *http.Request) {
+func getTaskByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
 	id := path
 
-	switch r.Method {
-	case http.MethodGet:
-		getTaskByID(w, r, id)
-	case http.MethodDelete:
-		deleteTaskByID(w, r, id)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
-}
-
-func getTaskByID(w http.ResponseWriter, _ *http.Request, id string) {
 	task, exists := tasks[id]
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	taskJSON, err := json.Marshal(task)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -103,36 +96,28 @@ func getTaskByID(w http.ResponseWriter, _ *http.Request, id string) {
 	w.Write(taskJSON)
 }
 
-func deleteTaskByID(w http.ResponseWriter, _ *http.Request, id string) {
-	_, exists := tasks[id]
-	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
+func deleteTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	id := path
+
+	if _, exists := tasks[id]; !exists {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	delete(tasks, id)
-
 	w.WriteHeader(http.StatusOK)
-}
-
-func handleTasks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	switch r.Method {
-	case http.MethodGet:
-		getAllTasks(w, r)
-	case http.MethodPost:
-		createTask(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
 }
 
 func main() {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/tasks", handleTasks)
-	mux.HandleFunc("/tasks/", handleTaskByID)
+	mux.HandleFunc("GET /tasks", getAllTasks)
+	mux.HandleFunc("POST /tasks", createTask)
+	mux.HandleFunc("GET /tasks/{id}", getTaskByID)
+	mux.HandleFunc("DELETE /tasks/{id}", deleteTaskByID)
 
 	fmt.Println("Сервер запущен на порту :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
